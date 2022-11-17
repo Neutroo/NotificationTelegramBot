@@ -4,128 +4,161 @@ using Telegram.Bot.Extensions.Polling;
 using Telegram.Bot.Types.ReplyMarkups;
 using NotificationTelegramBot;
 
-ITelegramBotClient bot = new TelegramBotClient("5656782812:AAGJiYaOBVYfdQXIuerz_cn4kWyjkOL9il8");
-List<Notification> notifications= new List<Notification>();
-
-Console.WriteLine("Бот запущен " + bot.GetMeAsync().Result.FirstName);
-
-var cts = new CancellationTokenSource();
-var cancellationToken = cts.Token;
-var receiverOptions = new ReceiverOptions
+internal class Program
 {
-    AllowedUpdates = { }
-};
-bot.StartReceiving(
-    HandleUpdateAsync,
-    HandleErrorAsync,
-    receiverOptions,
-    cancellationToken
-);
-Console.ReadLine();
+    static Dictionary<long, Notification> notifications = new();
 
-static async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
-{
-    Console.WriteLine(Newtonsoft.Json.JsonConvert.SerializeObject(update));
-    if (update.Type == Telegram.Bot.Types.Enums.UpdateType.Message)
+    private static void Main(string[] args)
     {
-        var message = update.Message;
+        ITelegramBotClient bot = new TelegramBotClient("5656782812:AAGJiYaOBVYfdQXIuerz_cn4kWyjkOL9il8");
 
-        if (message?.Text?.ToLower() == "/start")
+        Console.WriteLine("Бот запущен " + bot.GetMeAsync().Result.FirstName);
+
+        var cts = new CancellationTokenSource();
+        var cancellationToken = cts.Token;
+        var receiverOptions = new ReceiverOptions
         {
-            await botClient.SendTextMessageAsync(message.Chat, 
-                "Привет! Я буду оповещать вашу команду о важных событиях =)");
+            AllowedUpdates = { }
+        };
 
-            var inlineKeyboard = new InlineKeyboardMarkup(new[]
+        bot.StartReceiving(
+            HandleUpdateAsync,
+            HandleErrorAsync,
+            receiverOptions,
+            cancellationToken
+        ); 
+
+        Console.ReadLine();  
+    }
+
+    static async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
+    {
+        Console.WriteLine(Newtonsoft.Json.JsonConvert.SerializeObject(update));
+        if (update.Type == Telegram.Bot.Types.Enums.UpdateType.Message)
+        {
+            var message = update.Message;
+
+            if (message?.Text != null)
             {
-                new[]
+                if (message.Text.ToLower() == "/start")
                 {
-                    InlineKeyboardButton.WithCallbackData("Да", "Yes"),
-                    InlineKeyboardButton.WithCallbackData("Нет", "No"),
+                    await botClient.SendTextMessageAsync(message.Chat,
+                        "Привет! Я буду оповещать вашу команду о важных событиях =)");
+
+                    var inlineKeyboard = new InlineKeyboardMarkup(new[]
+                    {
+                        new[]
+                        {
+                            InlineKeyboardButton.WithCallbackData("Да", "Yes"),
+                            InlineKeyboardButton.WithCallbackData("Нет", "No"),
+                        }
+                    });
+
+                    await botClient.SendTextMessageAsync(message.Chat.Id,
+                        "Хотите создать напоминание прямо сейчас?",
+                        replyMarkup: inlineKeyboard);
                 }
-            });
-            await botClient.SendTextMessageAsync(message.Chat.Id, 
-                "Хотите создать напоминание прямо сейчас?",
-                replyMarkup: inlineKeyboard);
+                else if (message.Text.ToLower() == "/create")
+                {
+                    await botClient.SendTextMessageAsync(message.Chat.Id,
+                        "Хорошо, давайте приступим. Как хотите назвать событие?");
 
-            return;
+                    notifications.Add(message.Chat.Id, new(message.Chat.Id)
+                    {
+                        Step = FillingStep.EventName
+                    });
+                }
+                else if (notifications.ContainsKey(message.Chat.Id))
+                {
+                    if (notifications[message.Chat.Id].Step == FillingStep.EventName)
+                    {
+                        notifications[message.Chat.Id].EventName = message.Text;
+                        notifications[message.Chat.Id].Step = FillingStep.Date;
+
+                        await botClient.SendTextMessageAsync(message.Chat.Id,
+                            "В какой день и во сколько это будет?");
+                    }
+                    else if (notifications[message.Chat.Id].Step == FillingStep.Date)
+                    {
+                        if (DateTime.TryParse(message.Text, out DateTime date))
+                        {
+                            if (date > DateTime.Now)
+                            {
+                                notifications[message.Chat.Id].Date = date;
+
+                                var inlineKeyboard = new InlineKeyboardMarkup(new[]
+                                {
+                                    new[]
+                                    {
+                                        InlineKeyboardButton.WithCallbackData("5 минут", "5"),
+                                        InlineKeyboardButton.WithCallbackData("15 минут", "15"),
+                                    },
+                                    new[]
+                                    {
+                                        InlineKeyboardButton.WithCallbackData("30 минут", "30"),
+                                        InlineKeyboardButton.WithCallbackData("Час", "60"),
+                                    }
+                                });
+
+                                notifications[message.Chat.Id].Step = FillingStep.TimeBefore;
+
+                                await botClient.SendTextMessageAsync(message.Chat.Id,
+                                    "Дата установлена. За сколько до события хотите получить уведомление?",
+                                    replyMarkup: inlineKeyboard);
+                            }
+                            else
+                                await botClient.SendTextMessageAsync(message.Chat.Id,
+                                    "Дата события не может быть позднее текущего времени!");
+                        }
+                        else
+                        {
+                            await botClient.SendTextMessageAsync(message.Chat.Id,
+                                "Неверный формат даты, попробуйте еще раз в виде: день-месяц-год часы:минуты.");
+                        }
+                    }
+                    else
+                    {
+                        await botClient.SendTextMessageAsync(message.Chat.Id,
+                            "Я неправильно вас понял, попробуйте сформулировать по другому.");
+                    }
+                }            
+
+                return;
+            }
         }
-        else if (message.Text.ToLower() == "/create")
+        else if (update.Type == Telegram.Bot.Types.Enums.UpdateType.CallbackQuery)
         {
-            await botClient.SendTextMessageAsync(message.Chat,
-                "Хорошо, давайте приступим.\n" +
-                "Напиши название и дату события в формате:\n" +
-                "!newevent\n" +
-                "Название\n" +
-                "Дата");
+            var query = update.CallbackQuery;
 
-            return;
-        }
-        else if (message.Text.ToLower().Contains("!newevent"))
-        {
-            string[] data = message.Text.Split('\n');
-
-            DateTime date;
-            DateTime.TryParse(data[2], out date);
-
-            Notification notification = new()
+            if (query?.Message != null)
             {
-                ChatId = message.Chat.Id,
-                Event = data[1],
-                Date = date
-            };
+                if (query.Data == "Yes")
+                {
+                    await botClient.SendTextMessageAsync(query.Message.Chat.Id,
+                        "Хорошо, давайте приступим. Как хотите назвать событие?");
 
-            notification.Start();
+                    notifications.Add(query.Message.Chat.Id, new(query.Message.Chat.Id)
+                    {
+                        Step = FillingStep.EventName
+                    });
+                }
+                else if (notifications.ContainsKey(query.Message.Chat.Id) && notifications[query.Message.Chat.Id].Step == FillingStep.TimeBefore)
+                {
+                    notifications[query.Message.Chat.Id].Date = notifications[query.Message.Chat.Id].Date.Subtract(new TimeSpan(0, int.Parse(query.Data), 0));
 
-            await botClient.SendTextMessageAsync(message.Chat, "Напоминание создано!");
-        }    
-        else
-            await botClient.SendTextMessageAsync(message.Chat, 
-                "Я неправильно вас понял, попробуйте сформулировать по другому.");
-    }
-    else if(update.Type == Telegram.Bot.Types.Enums.UpdateType.CallbackQuery)
-    {
-        var message = update.Message;
-        var query = update.CallbackQuery;
-        if (query?.Data == "Yes")
-        {
-            await botClient.SendTextMessageAsync(query.Message.Chat,
-                "Хорошо, давайте приступим.\n" +
-                "Напиши название и дату события в формате:\n" +
-                "!newevent\n" +
-                "Название\n" +
-                "Дата");
-            return;
+                    await botClient.SendTextMessageAsync(query.Message.Chat.Id,
+                        $"Отлично! Я напомню вам за {query.Data} минут до начала =)");
+                    
+                    notifications[query.Message.Chat.Id].Start(botClient);
+                }
+
+                return;
+            }
         }
     }
-}
 
-static async Task CreateNotificationAsync(ITelegramBotClient botClient, Update update)
-{
-    var inlineKeyboard = new InlineKeyboardMarkup(new[]
+    static async Task HandleErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
     {
-        new[]
-        {
-            InlineKeyboardButton.WithCallbackData("Да", "Yes"),
-            InlineKeyboardButton.WithCallbackData("Нет", "No"),
-        }
-    });
-    await botClient.SendTextMessageAsync(update.Message.Chat.Id, 
-        "Хотите создать напоминание прямо сейчас?", 
-        replyMarkup: inlineKeyboard);
-
-}
-
-static async Task HandleErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
-{   
-    Console.WriteLine(Newtonsoft.Json.JsonConvert.SerializeObject(exception));
-}
-
-static void SetNot(string eventName, Notification notification)
-{
-    notification.Event = eventName;
-}
-
-static void SetDate(DateTime dateTime, Notification notification)
-{
-    notification.Date = dateTime;
+        Console.WriteLine(Newtonsoft.Json.JsonConvert.SerializeObject(exception));
+    }
 }
