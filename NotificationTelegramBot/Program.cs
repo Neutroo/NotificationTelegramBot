@@ -83,7 +83,7 @@ internal class Program
                 }
                 else if (message.Text.ToLower() == "/events")
                 {
-                    if (notifications.Count > 0)
+                    if (notifications.ContainsKey(message.Chat.Id) && notifications[message.Chat.Id].Count() > 0)
                     {
                         string events = string.Empty;
                         foreach (var notification in notifications[message.Chat.Id])
