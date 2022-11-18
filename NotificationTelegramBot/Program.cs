@@ -3,8 +3,6 @@ using Telegram.Bot;
 using Telegram.Bot.Extensions.Polling;
 using Telegram.Bot.Types.ReplyMarkups;
 using NotificationTelegramBot;
-using Quartz.Xml;
-using Quartz;
 
 internal class Program
 {
@@ -85,14 +83,20 @@ internal class Program
                 }
                 else if (message.Text.ToLower() == "/events")
                 {
-                    string events = string.Empty;
-                    foreach (var notification in notifications[message.Chat.Id])
+                    if (notifications.Count > 0)
                     {
-                        events += $"{notification.EventName} - {notification.Date}\n";
-                    }
+                        string events = string.Empty;
+                        foreach (var notification in notifications[message.Chat.Id])
+                        {
+                            events += $"{notification.EventName} - {notification.Date}\n";
+                        }
 
-                    await botClient.SendTextMessageAsync(message.Chat.Id,
-                        events);
+                        await botClient.SendTextMessageAsync(message.Chat.Id,
+                            events);
+                    }
+                    else
+                        await botClient.SendTextMessageAsync(message.Chat.Id,
+                            "У вас еще нет ни одного запланированного события.");
                 }
                 else if (notifications.ContainsKey(message.Chat.Id))
                 {
@@ -141,7 +145,7 @@ internal class Program
 
                         default:
                             await botClient.SendTextMessageAsync(message.Chat.Id,
-                                "Неверный формат даты, попробуйте еще раз в виде: день-месяц-год часы:минуты.");
+                                "Неверный формат даты, попробуйте еще раз в виде: месяц-день-год часы:минуты.");
                             break;
                     }  
                 }
@@ -195,20 +199,18 @@ internal class Program
 
                     if (timeBefore > DateTime.Now)
                     {
-                        notifications[query.Message.Chat.Id].currentNotification.Date = timeBefore;
-
-                        await botClient.SendTextMessageAsync(query.Message.Chat.Id, 
+                        await botClient.SendTextMessageAsync(query.Message.Chat.Id,
                             $"Отлично! Я напомню вам за {query.Data} минут до начала =)");
 
-                        notifications[query.Message.Chat.Id].Start(botClient);
+                        notifications[query.Message.Chat.Id].Start(botClient, int.Parse(query.Data));
                     }
                     else
                     {
                         notifications[query.Message.Chat.Id].currentNotification.Step = FillingStep.Date;
 
                         await botClient.SendTextMessageAsync(query.Message.Chat.Id,
-                                        "Время напоминания о событии не может быть меньше текущего времени! " +
-                                        "В какой день и во сколько хотите получить уведомление?");              
+                            "Время напоминания о событии не может быть меньше текущего времени! " +
+                            "В какой день и во сколько хотите получить уведомление?");              
                     }           
                 }
 

@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Collections;
 using Telegram.Bot;
 
 namespace NotificationTelegramBot
@@ -14,13 +9,14 @@ namespace NotificationTelegramBot
         private Dictionary<string, Notification> notifications = new();
         private readonly object sourceLock = new();
 
-        public async void Start(ITelegramBotClient botClient)
+        public async void Start(ITelegramBotClient botClient, int timeBefore)
         {
             notifications.Add(currentNotification.EventName, currentNotification);
             await Task.Run(() =>
             {
-                var timeToAlarm = currentNotification.Date;
+                var timeToAlarm = currentNotification.Date.Subtract(new TimeSpan(0, timeBefore, 0));
                 var interval = timeToAlarm - DateTime.Now;
+                var eventName = currentNotification.EventName;
 
                 currentNotification.Timer = new()
                 {
@@ -31,11 +27,11 @@ namespace NotificationTelegramBot
                 currentNotification.Timer.Elapsed += async (object source, System.Timers.ElapsedEventArgs e) =>
                 {
                     await botClient.SendTextMessageAsync(currentNotification.ChatId, 
-                        $"Событие {currentNotification.EventName} начнется через {interval.TotalMinutes} минут!");
+                        $"Событие {eventName} начнется через {timeBefore} минут!");
 
                     lock (sourceLock)
                     {
-                        notifications.Remove(currentNotification.EventName);
+                        notifications.Remove(eventName);
                     }
                 };
 

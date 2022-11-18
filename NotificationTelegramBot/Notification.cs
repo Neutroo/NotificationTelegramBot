@@ -1,6 +1,4 @@
-﻿using Telegram.Bot;
-
-namespace NotificationTelegramBot
+﻿namespace NotificationTelegramBot
 {
     public enum FillingStep
     {
